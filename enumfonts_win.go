@@ -3,10 +3,16 @@
 package enumfonts
 
 import (
-	"github.com/lxn/win"
+	"bytes"
+	"fmt"
+	"io/ioutil"
 	"strings"
 	"syscall"
 	"unsafe"
+
+	"github.com/lxn/win"
+	"golang.org/x/text/encoding/simplifiedchinese"
+	"golang.org/x/text/transform"
 )
 
 func EnumFonts() ([]string, error) {
@@ -53,7 +59,13 @@ func EnumFonts() ([]string, error) {
 			}
 			bts = append(bts, c)
 		}
+
+		bts, err := GbkToUtf8(bts)
+		if nil != err {
+			fmt.Println(err)
+		}
 		fontName := string(bts)
+		fmt.Println(fontName)
 		if !strings.HasPrefix(fontName, "@") {
 			fonts = append(fonts, fontName)
 		}
@@ -69,4 +81,13 @@ func EnumFonts() ([]string, error) {
 	_, _, _ = fct.Call(uintptr(hDC), uintptr(unsafe.Pointer(&lf)), callback, 0, 0)
 
 	return fonts, nil
+}
+
+func GbkToUtf8(s []byte) ([]byte, error) {
+	reader := transform.NewReader(bytes.NewReader(s), simplifiedchinese.GBK.NewDecoder())
+	d, e := ioutil.ReadAll(reader)
+	if e != nil {
+		return nil, e
+	}
+	return d, nil
 }
