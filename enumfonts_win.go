@@ -5,6 +5,7 @@ package enumfonts
 import (
 	"bytes"
 	"io/ioutil"
+	"sort"
 	"strings"
 	"syscall"
 	"unsafe"
@@ -49,6 +50,7 @@ func EnumFonts() ([]string, error) {
 	fct := dll.MustFindProc("EnumFontFamiliesExA")
 
 	// create callback function receiving each font name
+	fontMap := map[string]bool{}
 	var fonts []string
 	callback := syscall.NewCallback(func(lpElfe *logFontEx, lpntme int, fontType int, lParam int) (ret uintptr) {
 		bts := make([]byte, 0, len(lpElfe.elfLogFont.LfFaceName))
@@ -67,7 +69,7 @@ func EnumFonts() ([]string, error) {
 			fontName = string(bts)
 		}
 		if !strings.HasPrefix(fontName, "@") {
-			fonts = append(fonts, fontName)
+			fontMap[fontName] = true
 		}
 		return 1
 	})
@@ -80,6 +82,10 @@ func EnumFonts() ([]string, error) {
 	defer win.ReleaseDC(0, hDC)
 	_, _, _ = fct.Call(uintptr(hDC), uintptr(unsafe.Pointer(&lf)), callback, 0, 0)
 
+	for f, _ := range fontMap {
+		fonts = append(fonts, f)
+	}
+	sort.Strings(fonts)
 	return fonts, nil
 }
 
