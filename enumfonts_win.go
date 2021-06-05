@@ -4,7 +4,6 @@ package enumfonts
 
 import (
 	"bytes"
-	"fmt"
 	"io/ioutil"
 	"strings"
 	"syscall"
@@ -60,12 +59,13 @@ func EnumFonts() ([]string, error) {
 			bts = append(bts, c)
 		}
 
-		bts, err := GbkToUtf8(bts)
-		if nil != err {
-			fmt.Println(err)
+		var fontName string
+		data, err := GbkToUtf8(bts)
+		if nil == err {
+			fontName = string(data)
+		} else {
+			fontName = string(bts)
 		}
-		fontName := string(bts)
-		fmt.Println(fontName)
 		if !strings.HasPrefix(fontName, "@") {
 			fonts = append(fonts, fontName)
 		}
