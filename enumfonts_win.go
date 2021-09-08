@@ -1,3 +1,4 @@
+//go:build windows
 // +build windows
 
 package enumfonts
@@ -8,6 +9,7 @@ import (
 	"sort"
 	"strings"
 	"syscall"
+	"unicode"
 	"unsafe"
 
 	"github.com/lxn/win"
@@ -16,7 +18,6 @@ import (
 )
 
 func EnumFonts() ([]string, error) {
-	const lf_FACESIZE = 32
 	type logFont struct {
 		LfHeight         int32
 		LfWidth          int32
@@ -31,13 +32,13 @@ func EnumFonts() ([]string, error) {
 		LfClipPrecision  byte
 		LfQuality        byte
 		LfPitchAndFamily byte
-		LfFaceName       [lf_FACESIZE]uint8
+		LfFaceName       [32]byte
 	}
 	type logFontEx struct {
 		elfLogFont  logFont
-		elfFullName [lf_FACESIZE]uint16
-		elfStyle    [lf_FACESIZE]uint16
-		elfScript   [lf_FACESIZE]uint16
+		elfFullName [32]byte
+		elfStyle    [32]byte
+		elfScript   [32]byte
 	}
 
 	// load gdi32.dll
@@ -53,24 +54,23 @@ func EnumFonts() ([]string, error) {
 	fontMap := map[string]bool{}
 	var fonts []string
 	callback := syscall.NewCallback(func(lpElfe *logFontEx, lpntme int, fontType int, lParam int) (ret uintptr) {
-		bts := make([]byte, 0, len(lpElfe.elfLogFont.LfFaceName))
-		for _, c := range lpElfe.elfLogFont.LfFaceName {
-			if c == 0 {
-				break
-			}
-			bts = append(bts, c)
+		bts := bytesSlice(lpElfe.elfScript)
+		fontStyle := bytes2Str(bts)
+		if "Regular" != fontStyle {
+			return 1
 		}
 
-		var fontName string
-		data, err := GbkToUtf8(bts)
-		if nil == err {
-			fontName = string(data)
-		} else {
-			fontName = string(bts)
+		bts = bytesSlice(lpElfe.elfLogFont.LfFaceName)
+		fontName := bytes2Str(bts)
+		if strings.HasPrefix(fontName, "@") || fontMap[fontName] {
+			return 1
 		}
-		if !strings.HasPrefix(fontName, "@") {
-			fontMap[fontName] = true
+
+		if isChinese(fontName) && strings.Contains(fontName, " ") {
+			fontName = fontName[:strings.LastIndex(fontName, " ")]
 		}
+		fontName = strings.TrimSpace(fontName)
+		fontMap[fontName] = true
 		return 1
 	})
 
@@ -89,11 +89,41 @@ func EnumFonts() ([]string, error) {
 	return fonts, nil
 }
 
-func GbkToUtf8(s []byte) ([]byte, error) {
+func bytesSlice(b [32]byte) (ret []byte) {
+	ret = make([]byte, 0, len(b))
+	for _, c := range b {
+		if c == 0 {
+			break
+		}
+		ret = append(ret, c)
+	}
+	return
+}
+
+func bytes2Str(b []byte) string {
+	b, err := gbk2utf8(b)
+	if nil == err {
+		return string(b)
+	}
+	return string(b)
+}
+
+func gbk2utf8(s []byte) ([]byte, error) {
 	reader := transform.NewReader(bytes.NewReader(s), simplifiedchinese.GBK.NewDecoder())
 	d, e := ioutil.ReadAll(reader)
 	if e != nil {
 		return nil, e
 	}
 	return d, nil
+}
+
+func isChinese(str string) bool {
+	var count int
+	for _, v := range str {
+		if unicode.Is(unicode.Han, v) {
+			count++
+			break
+		}
+	}
+	return count > 0
 }
